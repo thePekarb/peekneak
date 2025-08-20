@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -6,6 +6,7 @@
     <title>Пикник - Организация отдыха на природе</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <style>
         :root {
             --primary-color: #4CAF50;
@@ -16,6 +17,8 @@
             --glass-bg: rgba(255, 255, 255, 0.15);
             --glass-border: rgba(255, 255, 255, 0.2);
             --glass-shadow: rgba(0, 0, 0, 0.1);
+            --error-color: #f44336;
+            --success-color: #4caf50;
         }
 
         * {
@@ -124,6 +127,10 @@
             background: rgba(255, 255, 255, 0.1);
         }
 
+        .btn-danger {
+            background: var(--error-color);
+        }
+
         h1, h2, h3 {
             margin-bottom: 15px;
             color: white;
@@ -200,7 +207,7 @@
             color: white;
         }
 
-        .form-group input {
+        .form-group input, .form-group textarea, .form-group select {
             width: 100%;
             padding: 12px 15px;
             border-radius: 10px;
@@ -210,8 +217,20 @@
             font-size: 16px;
         }
 
-        .form-group input::placeholder {
+        .form-group input::placeholder, .form-group textarea::placeholder {
             color: rgba(255, 255, 255, 0.7);
+        }
+
+        .error-message {
+            color: var(--error-color);
+            margin-top: 5px;
+            font-size: 14px;
+        }
+
+        .success-message {
+            color: var(--success-color);
+            margin-top: 5px;
+            font-size: 14px;
         }
 
         /* Основной контент */
@@ -308,6 +327,54 @@
             border-left: 4px solid #4caf50;
         }
 
+        .vote-count {
+            margin-left: 10px;
+            font-size: 14px;
+            color: var(--accent-color);
+        }
+
+        /* Модальные окна */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 20px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: white;
+        }
+
         /* Адаптивность */
         @media (max-width: 768px) {
             .grid-2 {
@@ -334,6 +401,21 @@
                 font-size: 14px;
             }
         }
+
+        /* Админ панель */
+        .admin-panel {
+            display: none;
+        }
+
+        .admin-section {
+            margin-bottom: 30px;
+        }
+
+        .admin-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
     </style>
 </head>
 <body>
@@ -349,14 +431,15 @@
                 <form id="login-form" class="auth-form active">
                     <h2>Вход в систему</h2>
                     <div class="form-group">
-                        <label for="login-email">Email</label>
-                        <input type="email" id="login-email" placeholder="Введите ваш email" required>
+                        <label for="login-email">Email или логин админа</label>
+                        <input type="text" id="login-email" placeholder="Введите ваш email или admin2904" required>
                     </div>
                     <div class="form-group">
                         <label for="login-password">Пароль</label>
                         <input type="password" id="login-password" placeholder="Введите ваш пароль" required>
                     </div>
                     <button type="button" class="btn" onclick="login()"><i class="fas fa-sign-in-alt"></i> Войти</button>
+                    <div id="login-message" class="error-message"></div>
                 </form>
                 
                 <form id="register-form" class="auth-form">
@@ -374,6 +457,7 @@
                         <input type="password" id="register-password" placeholder="Придумайте пароль" required>
                     </div>
                     <button type="button" class="btn" onclick="register()"><i class="fas fa-user-plus"></i> Зарегистрироваться</button>
+                    <div id="register-message" class="error-message"></div>
                 </form>
             </div>
         </section>
@@ -385,8 +469,8 @@
                     <i class="fas fa-tree"></i> Пикник
                 </div>
                 <div class="user-info">
-                    <div class="user-avatar">ИИ</div>
-                    <span>Иван Иванов</span>
+                    <div class="user-avatar" id="user-avatar">ИИ</div>
+                    <span id="user-name">Иван Иванов</span>
                     <button class="btn btn-secondary" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Выйти</button>
                 </div>
             </header>
@@ -406,25 +490,10 @@
                     <i class="fas fa-users"></i>
                     <h2>Участники пикника</h2>
                 </div>
-                <div class="participants-list">
-                    <div class="participant-card">
-                        <h3>Иван Иванов</h3>
-                        <div class="participant-status status-going">Иду на пикник</div>
-                    </div>
-                    <div class="participant-card">
-                        <h3>Петр Петров</h3>
-                        <div class="participant-status status-going">Иду на пикник</div>
-                    </div>
-                    <div class="participant-card">
-                        <h3>Мария Сидорова</h3>
-                        <div class="participant-status status-not-going">Не иду</div>
-                    </div>
-                    <div class="participant-card">
-                        <h3>Анна Кузнецова</h3>
-                        <div class="participant-status status-going">Иду на пикник</div>
-                    </div>
+                <div class="participants-list" id="participants-list">
+                    <!-- Участники будут загружены динамически -->
                 </div>
-                <button class="btn" style="margin-top: 20px;"><i class="fas fa-user-check"></i> Отметить мое участие</button>
+                <button class="btn" style="margin-top: 20px;" onclick="toggleParticipation()"><i class="fas fa-user-check"></i> <span id="participation-text">Отметить мое участие</span></button>
             </div>
             
             <!-- Блок 3: Снаряжение -->
@@ -433,32 +502,10 @@
                     <i class="fas fa-hiking"></i>
                     <h2>Снаряжение</h2>
                 </div>
-                <div class="equipment-list">
-                    <div class="equipment-item">
-                        <div class="equipment-image"><i class="fas fa-tent"></i></div>
-                        <div class="equipment-info">
-                            <h3>Палатка 4-х местная</h3>
-                            <p>Свободно</p>
-                        </div>
-                        <button class="btn">Взять</button>
-                    </div>
-                    <div class="equipment-item">
-                        <div class="equipment-image"><i class="fas fa-fire"></i></div>
-                        <div class="equipment-info">
-                            <h3>Мангал</h3>
-                            <p>Занято: Иван Иванов</p>
-                        </div>
-                        <button class="btn" disabled>Взять</button>
-                    </div>
-                    <div class="equipment-item">
-                        <div class="equipment-image"><i class="fas fa-chair"></i></div>
-                        <div class="equipment-info">
-                            <h3>Раскладной стул</h3>
-                            <p>Свободно</p>
-                        </div>
-                        <button class="btn">Взять</button>
-                    </div>
+                <div class="equipment-list" id="equipment-list">
+                    <!-- Снаряжение будет загружено динамически -->
                 </div>
+                <button class="btn" style="margin-top: 20px;" onclick="showAddEquipmentModal()"><i class="fas fa-plus"></i> Добавить снаряжение</button>
             </div>
             
             <!-- Блок 4: Продукты -->
@@ -470,42 +517,16 @@
                 <div class="grid-2">
                     <div>
                         <h3>Утвержденные продукты</h3>
-                        <div class="products-list">
-                            <div class="product-item">
-                                <div class="product-info">
-                                    <h3>Шашлык из свинины</h3>
-                                    <p>Классический шашлык с луком и специями (не постное)</p>
-                                </div>
-                            </div>
-                            <div class="product-item">
-                                <div class="product-info">
-                                    <h3>Овощи на гриле</h3>
-                                    <p>Кабачки, баклажаны, перец (постное)</p>
-                                </div>
-                            </div>
+                        <div class="products-list" id="approved-products">
+                            <!-- Утвержденные продукты будут загружены динамически -->
                         </div>
                     </div>
                     <div>
                         <h3>На голосовании</h3>
-                        <div class="products-list">
-                            <div class="product-item">
-                                <div class="product-info">
-                                    <h3>Сырная тарелка</h3>
-                                    <p>Разные сорта сыров (не постное)</p>
-                                    <p>Голосов: 4/5</p>
-                                </div>
-                                <button class="btn"><i class="fas fa-vote-yea"></i></button>
-                            </div>
-                            <div class="product-item">
-                                <div class="product-info">
-                                    <h3>Фруктовый салат</h3>
-                                    <p>Сезонные фрукты (постное)</p>
-                                    <p>Голосов: 2/5</p>
-                                </div>
-                                <button class="btn"><i class="fas fa-vote-yea"></i></button>
-                            </div>
+                        <div class="products-list" id="voting-products">
+                            <!-- Продукты на голосовании будут загружены динамически -->
                         </div>
-                        <button class="btn" style="margin-top: 20px;"><i class="fas fa-plus"></i> Предложить продукт</button>
+                        <button class="btn" style="margin-top: 20px;" onclick="showAddProductModal()"><i class="fas fa-plus"></i> Предложить продукт</button>
                     </div>
                 </div>
             </div>
@@ -516,33 +537,138 @@
                     <i class="fas fa-shopping-cart"></i>
                     <h2>Список покупок</h2>
                 </div>
-                <div class="shopping-list">
-                    <div class="shopping-item priority-high">
-                        <div class="shopping-info">
-                            <h3>Мясо для шашлыка</h3>
-                            <p>Предложил: Иван Иванов</p>
-                        </div>
-                    </div>
-                    <div class="shopping-item priority-medium">
-                        <div class="shopping-info">
-                            <h3>Уголь для мангала</h3>
-                            <p>Предложил: Петр Петров</p>
-                        </div>
-                    </div>
-                    <div class="shopping-item priority-low">
-                        <div class="shopping-info">
-                            <h3>Специи</h3>
-                            <p>Предложил: Анна Кузнецова</p>
-                        </div>
-                    </div>
+                <div class="shopping-list" id="shopping-list">
+                    <!-- Список покупок будет загружен динамически -->
                 </div>
-                <button class="btn" style="margin-top: 20px;"><i class="fas fa-plus"></i> Добавить товар</button>
+                <button class="btn" style="margin-top: 20px;" onclick="showAddShoppingItemModal()"><i class="fas fa-plus"></i> Добавить товар</button>
+            </div>
+        </section>
+
+        <!-- Админ панель -->
+        <section id="admin-panel" class="admin-panel">
+            <header>
+                <div class="logo">
+                    <i class="fas fa-tree"></i> Панель администратора
+                </div>
+                <div class="user-info">
+                    <div class="user-avatar">А</div>
+                    <span>Администратор</span>
+                    <button class="btn btn-secondary" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Выйти</button>
+                </div>
+            </header>
+
+            <div class="glass-card">
+                <div class="section-title">
+                    <i class="fas fa-tools"></i>
+                    <h2>Управление снаряжением</h2>
+                </div>
+                <div class="admin-controls">
+                    <button class="btn" onclick="showAddEquipmentModal()"><i class="fas fa-plus"></i> Добавить снаряжение</button>
+                </div>
+                <div class="equipment-list" id="admin-equipment-list">
+                    <!-- Снаряжение для админа будет загружено динамически -->
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <div class="section-title">
+                    <i class="fas fa-utensils"></i>
+                    <h2>Управление продуктами</h2>
+                </div>
+                <div class="admin-controls">
+                    <button class="btn" onclick="showAddProductModal()"><i class="fas fa-plus"></i> Добавить продукт</button>
+                </div>
+                <div class="products-list" id="admin-products-list">
+                    <!-- Продукты для админа будут загружены динамически -->
+                </div>
+            </div>
+
+            <div class="glass-card">
+                <div class="section-title">
+                    <i class="fas fa-shopping-cart"></i>
+                    <h2>Управление списком покупок</h2>
+                </div>
+                <div class="admin-controls">
+                    <button class="btn" onclick="showAddShoppingItemModal()"><i class="fas fa-plus"></i> Добавить товар</button>
+                </div>
+                <div class="shopping-list" id="admin-shopping-list">
+                    <!-- Список покупок для админа будет загружен динамически -->
+                </div>
             </div>
         </section>
     </div>
 
+    <!-- Модальное окно добавления снаряжения -->
+    <div id="add-equipment-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Добавить снаряжение</h3>
+                <button class="close-modal" onclick="closeModal('add-equipment-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="equipment-name">Название снаряжения</label>
+                <input type="text" id="equipment-name" placeholder="Введите название">
+            </div>
+            <div class="form-group">
+                <label for="equipment-image">Ссылка на изображение</label>
+                <input type="text" id="equipment-image" placeholder="Введите URL изображения">
+            </div>
+            <button class="btn" onclick="addEquipment()">Добавить</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления продукта -->
+    <div id="add-product-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Добавить продукт</h3>
+                <button class="close-modal" onclick="closeModal('add-product-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="product-name">Название продукта</label>
+                <input type="text" id="product-name" placeholder="Введите название">
+            </div>
+            <div class="form-group">
+                <label for="product-description">Описание</label>
+                <textarea id="product-description" placeholder="Введите описание"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="product-vegan">Тип продукта</label>
+                <select id="product-vegan">
+                    <option value="false">Не постное</option>
+                    <option value="true">Постное</option>
+                </select>
+            </div>
+            <button class="btn" onclick="addProduct()">Добавить</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно добавления товара в список покупок -->
+    <div id="add-shopping-item-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Добавить товар в список покупок</h3>
+                <button class="close-modal" onclick="closeModal('add-shopping-item-modal')">&times;</button>
+            </div>
+            <div class="form-group">
+                <label for="shopping-item-name">Название товара</label>
+                <input type="text" id="shopping-item-name" placeholder="Введите название">
+            </div>
+            <button class="btn" onclick="addShoppingItem()">Добавить</button>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <script>
+        // Инициализация Supabase
+        const SUPABASE_URL = 'https://your-project.supabase.co';
+        const SUPABASE_ANON_KEY = 'your-anon-key';
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Текущий пользователь
+        let currentUser = null;
+        let isAdmin = false;
+
         // Инициализация карты
         function initMap() {
             const map = L.map('map').setView([55.7558, 37.6173], 13);
@@ -572,48 +698,827 @@
         }
         
         // Функция входа
-        function login() {
+        async function login() {
             const email = document.getElementById('login-email').value;
             const password = document.getElementById('login-password').value;
+            const messageElement = document.getElementById('login-message');
             
             // Проверка на админа
             if (email === 'admin2904' && password === '123456') {
                 // Вход как администратор
-                alert('Вход выполнен как администратор');
+                isAdmin = true;
+                currentUser = {
+                    id: 'admin',
+                    email: 'admin@picnic.com',
+                    full_name: 'Администратор'
+                };
+                
                 document.getElementById('auth-section').style.display = 'none';
-                document.getElementById('main-content').style.display = 'block';
-                initMap();
+                document.getElementById('admin-panel').style.display = 'block';
+                loadAdminData();
+                messageElement.textContent = '';
                 return;
             }
             
-            // Обычная проверка (в реальном приложении здесь был бы запрос к Supabase)
-            if (email && password) {
+            // Обычная проверка
+            if (!email || !password) {
+                messageElement.textContent = 'Пожалуйста, заполните все поля';
+                return;
+            }
+            
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                });
+                
+                if (error) throw error;
+                
+                // Получаем информацию о пользователе
+                const { data: userData, error: userError } = await supabase
+                    .from('users')
+                    .select('*')
+                    .eq('id', data.user.id)
+                    .single();
+                    
+                if (userError) throw userError;
+                
+                currentUser = userData;
+                isAdmin = false;
+                
                 document.getElementById('auth-section').style.display = 'none';
                 document.getElementById('main-content').style.display = 'block';
+                document.getElementById('user-name').textContent = currentUser.full_name;
+                document.getElementById('user-avatar').textContent = currentUser.full_name.split(' ').map(n => n[0]).join('').toUpperCase();
+                
                 initMap();
-            } else {
-                alert('Пожалуйста, заполните все поля');
+                loadUserData();
+                messageElement.textContent = '';
+            } catch (error) {
+                messageElement.textContent = error.message;
             }
         }
         
         // Функция регистрации
-        function register() {
-            const fio = document.getElementById('register-fio').value;
+        async function register() {
+            const fullName = document.getElementById('register-fio').value;
             const email = document.getElementById('register-email').value;
             const password = document.getElementById('register-password').value;
+            const messageElement = document.getElementById('register-message');
             
-            if (fio && email && password) {
-                alert('Регистрация прошла успешно! Теперь вы можете войти.');
-                switchAuthTab('login');
-            } else {
-                alert('Пожалуйста, заполните все поля');
+            if (!fullName || !email || !password) {
+                messageElement.textContent = 'Пожалуйста, заполните все поля';
+                return;
+            }
+            
+            try {
+                // Регистрируем пользователя в Supabase Auth
+                const { data, error } = await supabase.auth.signUp({
+                    email: email,
+                    password: password,
+                });
+                
+                if (error) throw error;
+                
+                // Добавляем пользователя в таблицу users
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([
+                        { 
+                            id: data.user.id, 
+                            email: email, 
+                            full_name: fullName,
+                            is_going: false
+                        }
+                    ]);
+                    
+                if (insertError) throw insertError;
+                
+                messageElement.textContent = 'Регистрация прошла успешно! Теперь вы можете войти.';
+                messageElement.classList.remove('error-message');
+                messageElement.classList.add('success-message');
+                
+                // Очищаем форму
+                document.getElementById('register-fio').value = '';
+                document.getElementById('register-email').value = '';
+                document.getElementById('register-password').value = '';
+                
+                // Переключаем на вкладку входа
+                setTimeout(() => {
+                    switchAuthTab('login');
+                    messageElement.textContent = '';
+                    messageElement.classList.remove('success-message');
+                    messageElement.classList.add('error-message');
+                }, 2000);
+            } catch (error) {
+                messageElement.textContent = error.message;
             }
         }
         
         // Функция выхода
-        function logout() {
-            document.getElementById('auth-section').style.display = 'flex';
+        async function logout() {
+            await supabase.auth.signOut();
+            currentUser = null;
+            isAdmin = false;
+            
             document.getElementById('main-content').style.display = 'none';
+            document.getElementById('admin-panel').style.display = 'none';
+            document.getElementById('auth-section').style.display = 'flex';
+        }
+        
+        // Переключение участия в пикнике
+        async function toggleParticipation() {
+            if (!currentUser) return;
+            
+            try {
+                const { error } = await supabase
+                    .from('users')
+                    .update({ is_going: !currentUser.is_going })
+                    .eq('id', currentUser.id);
+                    
+                if (error) throw error;
+                
+                currentUser.is_going = !currentUser.is_going;
+                loadParticipants();
+                
+                const buttonText = document.getElementById('participation-text');
+                buttonText.textContent = currentUser.is_going ? 'Я не иду' : 'Отметить мое участие';
+            } catch (error) {
+                console.error('Ошибка при обновлении статуса:', error);
+            }
+        }
+        
+        // Загрузка данных для пользователя
+        async function loadUserData() {
+            await loadParticipants();
+            await loadEquipment();
+            await loadProducts();
+            await loadShoppingList();
+        }
+        
+        // Загрузка данных для админа
+        async function loadAdminData() {
+            await loadAdminEquipment();
+            await loadAdminProducts();
+            await loadAdminShoppingList();
+        }
+        
+        // Загрузка участников
+        async function loadParticipants() {
+            try {
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('*')
+                    .neq('email', 'admin@picnic.com')
+                    .order('full_name');
+                    
+                if (error) throw error;
+                
+                const participantsList = document.getElementById('participants-list');
+                participantsList.innerHTML = '';
+                
+                data.forEach(user => {
+                    const participantCard = document.createElement('div');
+                    participantCard.className = 'participant-card';
+                    
+                    participantCard.innerHTML = `
+                        <h3>${user.full_name}</h3>
+                        <div class="participant-status ${user.is_going ? 'status-going' : 'status-not-going'}">
+                            ${user.is_going ? 'Иду на пикник' : 'Не иду'}
+                        </div>
+                    `;
+                    
+                    participantsList.appendChild(participantCard);
+                });
+                
+                // Обновляем текст кнопки
+                if (currentUser) {
+                    const buttonText = document.getElementById('participation-text');
+                    buttonText.textContent = currentUser.is_going ? 'Я не иду' : 'Отметить мое участие';
+                }
+            } catch (error) {
+                console.error('Ошибка при загрузке участников:', error);
+            }
+        }
+        
+        // Загрузка снаряжения
+        async function loadEquipment() {
+            try {
+                const { data, error } = await supabase
+                    .from('equipment')
+                    .select('*')
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const equipmentList = document.getElementById('equipment-list');
+                equipmentList.innerHTML = '';
+                
+                data.forEach(item => {
+                    const equipmentItem = document.createElement('div');
+                    equipmentItem.className = 'equipment-item';
+                    
+                    equipmentItem.innerHTML = `
+                        <div class="equipment-image">
+                            ${item.image_url ? 
+                                `<img src="${item.image_url}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;">` : 
+                                `<i class="fas fa-hiking"></i>`
+                            }
+                        </div>
+                        <div class="equipment-info">
+                            <h3>${item.name}</h3>
+                            <p>${item.is_taken ? `Занято: ${item.taken_by_name || 'кем-то'}` : 'Свободно'}</p>
+                        </div>
+                        ${!item.is_taken ? 
+                            `<button class="btn" onclick="takeEquipment('${item.id}')">Взять</button>` : 
+                            (item.taken_by === currentUser.id ? 
+                                `<button class="btn" onclick="returnEquipment('${item.id}')">Вернуть</button>` : 
+                                `<button class="btn" disabled>Взять</button>`
+                            )
+                        }
+                    `;
+                    
+                    equipmentList.appendChild(equipmentItem);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке снаряжения:', error);
+            }
+        }
+        
+        // Взять снаряжение
+        async function takeEquipment(equipmentId) {
+            if (!currentUser) return;
+            
+            try {
+                const { error } = await supabase
+                    .from('equipment')
+                    .update({ 
+                        is_taken: true, 
+                        taken_by: currentUser.id,
+                        taken_by_name: currentUser.full_name
+                    })
+                    .eq('id', equipmentId);
+                    
+                if (error) throw error;
+                
+                loadEquipment();
+            } catch (error) {
+                console.error('Ошибка при взятии снаряжения:', error);
+            }
+        }
+        
+        // Вернуть снаряжение
+        async function returnEquipment(equipmentId) {
+            try {
+                const { error } = await supabase
+                    .from('equipment')
+                    .update({ 
+                        is_taken: false, 
+                        taken_by: null,
+                        taken_by_name: null
+                    })
+                    .eq('id', equipmentId);
+                    
+                if (error) throw error;
+                
+                loadEquipment();
+            } catch (error) {
+                console.error('Ошибка при возврате снаряжения:', error);
+            }
+        }
+        
+        // Загрузка продуктов
+        async function loadProducts() {
+            try {
+                const { data, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const approvedProducts = document.getElementById('approved-products');
+                const votingProducts = document.getElementById('voting-products');
+                approvedProducts.innerHTML = '';
+                votingProducts.innerHTML = '';
+                
+                data.forEach(product => {
+                    const productItem = document.createElement('div');
+                    productItem.className = 'product-item';
+                    
+                    productItem.innerHTML = `
+                        <div class="product-info">
+                            <h3>${product.name}</h3>
+                            <p>${product.description} (${product.is_vegan ? 'постное' : 'не постное'})</p>
+                            ${product.status === 'voting' ? `<p>Голосов: ${product.votes || 0}/5</p>` : ''}
+                        </div>
+                        ${product.status === 'voting' ? 
+                            `<button class="btn" onclick="voteForProduct('${product.id}')"><i class="fas fa-vote-yea"></i></button>` : 
+                            ''
+                        }
+                    `;
+                    
+                    if (product.status === 'approved') {
+                        approvedProducts.appendChild(productItem);
+                    } else {
+                        votingProducts.appendChild(productItem);
+                    }
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке продуктов:', error);
+            }
+        }
+        
+        // Голосование за продукт
+        async function voteForProduct(productId) {
+            if (!currentUser) return;
+            
+            try {
+                // Проверяем, голосовал ли уже пользователь
+                const { data: voteData, error: voteError } = await supabase
+                    .from('product_votes')
+                    .select('*')
+                    .eq('product_id', productId)
+                    .eq('user_id', currentUser.id);
+                    
+                if (voteError) throw voteError;
+                
+                if (voteData.length > 0) {
+                    alert('Вы уже голосовали за этот продукт');
+                    return;
+                }
+                
+                // Добавляем голос
+                const { error: insertError } = await supabase
+                    .from('product_votes')
+                    .insert([{ product_id: productId, user_id: currentUser.id }]);
+                    
+                if (insertError) throw insertError;
+                
+                // Обновляем количество голосов
+                const { data: productData, error: productError } = await supabase
+                    .from('products')
+                    .select('votes')
+                    .eq('id', productId)
+                    .single();
+                    
+                if (productError) throw productError;
+                
+                const newVotes = (productData.votes || 0) + 1;
+                
+                const { error: updateError } = await supabase
+                    .from('products')
+                    .update({ votes: newVotes })
+                    .eq('id', productId);
+                    
+                if (updateError) throw updateError;
+                
+                // Если голосов больше или равно 5, утверждаем продукт
+                if (newVotes >= 5) {
+                    const { error: approveError } = await supabase
+                        .from('products')
+                        .update({ status: 'approved' })
+                        .eq('id', productId);
+                        
+                    if (approveError) throw approveError;
+                }
+                
+                loadProducts();
+            } catch (error) {
+                console.error('Ошибка при голосовании:', error);
+            }
+        }
+        
+        // Загрузка списка покупок
+        async function loadShoppingList() {
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_list')
+                    .select('*')
+                    .order('priority', { ascending: false })
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const shoppingList = document.getElementById('shopping-list');
+                shoppingList.innerHTML = '';
+                
+                data.forEach(item => {
+                    if (!item.approved && !isAdmin) return;
+                    
+                    const shoppingItem = document.createElement('div');
+                    shoppingItem.className = `shopping-item priority-${getPriorityClass(item.priority)}`;
+                    
+                    shoppingItem.innerHTML = `
+                        <div class="shopping-info">
+                            <h3>${item.name}</h3>
+                            <p>Предложил: ${item.added_by_name}</p>
+                            ${isAdmin ? `<p>Приоритет: ${getPriorityText(item.priority)}</p>` : ''}
+                        </div>
+                        ${isAdmin ? `
+                            <div style="display:flex;gap:5px;">
+                                <button class="btn" onclick="approveShoppingItem('${item.id}')">${item.approved ? 'Снять' : 'Одобрить'}</button>
+                                <button class="btn btn-danger" onclick="deleteShoppingItem('${item.id}')"><i class="fas fa-trash"></i></button>
+                            </div>
+                        ` : ''}
+                    `;
+                    
+                    shoppingList.appendChild(shoppingItem);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке списка покупок:', error);
+            }
+        }
+        
+        // Вспомогательные функции для приоритета
+        function getPriorityClass(priority) {
+            if (priority >= 3) return 'high';
+            if (priority >= 2) return 'medium';
+            return 'low';
+        }
+        
+        function getPriorityText(priority) {
+            if (priority >= 3) return 'Высокий';
+            if (priority >= 2) return 'Средний';
+            return 'Низкий';
+        }
+        
+        // Модальные окна
+        function showAddEquipmentModal() {
+            document.getElementById('add-equipment-modal').style.display = 'flex';
+        }
+        
+        function showAddProductModal() {
+            document.getElementById('add-product-modal').style.display = 'flex';
+        }
+        
+        function showAddShoppingItemModal() {
+            document.getElementById('add-shopping-item-modal').style.display = 'flex';
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
+        // Добавление снаряжения
+        async function addEquipment() {
+            const name = document.getElementById('equipment-name').value;
+            const imageUrl = document.getElementById('equipment-image').value;
+            
+            if (!name) {
+                alert('Пожалуйста, введите название снаряжения');
+                return;
+            }
+            
+            try {
+                const { error } = await supabase
+                    .from('equipment')
+                    .insert([{ 
+                        name: name, 
+                        image_url: imageUrl || null,
+                        is_taken: false
+                    }]);
+                    
+                if (error) throw error;
+                
+                closeModal('add-equipment-modal');
+                document.getElementById('equipment-name').value = '';
+                document.getElementById('equipment-image').value = '';
+                
+                if (isAdmin) {
+                    loadAdminEquipment();
+                } else {
+                    loadEquipment();
+                }
+            } catch (error) {
+                console.error('Ошибка при добавлении снаряжения:', error);
+            }
+        }
+        
+        // Добавление продукта
+        async function addProduct() {
+            const name = document.getElementById('product-name').value;
+            const description = document.getElementById('product-description').value;
+            const isVegan = document.getElementById('product-vegan').value === 'true';
+            
+            if (!name) {
+                alert('Пожалуйста, введите название продукта');
+                return;
+            }
+            
+            try {
+                const { error } = await supabase
+                    .from('products')
+                    .insert([{ 
+                        name: name, 
+                        description: description,
+                        is_vegan: isVegan,
+                        status: isAdmin ? 'approved' : 'voting',
+                        votes: 0,
+                        added_by: currentUser.id,
+                        added_by_name: currentUser.full_name
+                    }]);
+                    
+                if (error) throw error;
+                
+                closeModal('add-product-modal');
+                document.getElementById('product-name').value = '';
+                document.getElementById('product-description').value = '';
+                
+                if (isAdmin) {
+                    loadAdminProducts();
+                } else {
+                    loadProducts();
+                }
+            } catch (error) {
+                console.error('Ошибка при добавлении продукта:', error);
+            }
+        }
+        
+        // Добавление товара в список покупок
+        async function addShoppingItem() {
+            const name = document.getElementById('shopping-item-name').value;
+            
+            if (!name) {
+                alert('Пожалуйста, введите название товара');
+                return;
+            }
+            
+            try {
+                const { error } = await supabase
+                    .from('shopping_list')
+                    .insert([{ 
+                        name: name,
+                        added_by: currentUser.id,
+                        added_by_name: currentUser.full_name,
+                        approved: isAdmin,
+                        priority: 1
+                    }]);
+                    
+                if (error) throw error;
+                
+                closeModal('add-shopping-item-modal');
+                document.getElementById('shopping-item-name').value = '';
+                
+                if (isAdmin) {
+                    loadAdminShoppingList();
+                } else {
+                    loadShoppingList();
+                }
+            } catch (error) {
+                console.error('Ошибка при добавлении товара:', error);
+            }
+        }
+        
+        // Функции для админ-панели
+        async function loadAdminEquipment() {
+            try {
+                const { data, error } = await supabase
+                    .from('equipment')
+                    .select('*')
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const equipmentList = document.getElementById('admin-equipment-list');
+                equipmentList.innerHTML = '';
+                
+                data.forEach(item => {
+                    const equipmentItem = document.createElement('div');
+                    equipmentItem.className = 'equipment-item';
+                    
+                    equipmentItem.innerHTML = `
+                        <div class="equipment-image">
+                            ${item.image_url ? 
+                                `<img src="${item.image_url}" alt="${item.name}" style="width:100%;height:100%;object-fit:cover;">` : 
+                                `<i class="fas fa-hiking"></i>`
+                            }
+                        </div>
+                        <div class="equipment-info">
+                            <h3>${item.name}</h3>
+                            <p>${item.is_taken ? `Занято: ${item.taken_by_name || 'кем-то'}` : 'Свободно'}</p>
+                        </div>
+                        <button class="btn btn-danger" onclick="deleteEquipment('${item.id}')"><i class="fas fa-trash"></i></button>
+                    `;
+                    
+                    equipmentList.appendChild(equipmentItem);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке снаряжения для админа:', error);
+            }
+        }
+        
+        async function loadAdminProducts() {
+            try {
+                const { data, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const productsList = document.getElementById('admin-products-list');
+                productsList.innerHTML = '';
+                
+                data.forEach(product => {
+                    const productItem = document.createElement('div');
+                    productItem.className = 'product-item';
+                    
+                    productItem.innerHTML = `
+                        <div class="product-info">
+                            <h3>${product.name}</h3>
+                            <p>${product.description} (${product.is_vegan ? 'постное' : 'не постное'})</p>
+                            <p>Статус: ${product.status === 'approved' ? 'Утвержден' : 'На голосовании'}</p>
+                            <p>Голосов: ${product.votes || 0}</p>
+                        </div>
+                        <div style="display:flex;gap:5px;">
+                            <button class="btn" onclick="toggleProductStatus('${product.id}', '${product.status}')">
+                                ${product.status === 'approved' ? 'В голосование' : 'Утвердить'}
+                            </button>
+                            <button class="btn btn-danger" onclick="deleteProduct('${product.id}')"><i class="fas fa-trash"></i></button>
+                        </div>
+                    `;
+                    
+                    productsList.appendChild(productItem);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке продуктов для админа:', error);
+            }
+        }
+        
+        async function loadAdminShoppingList() {
+            try {
+                const { data, error } = await supabase
+                    .from('shopping_list')
+                    .select('*')
+                    .order('priority', { ascending: false })
+                    .order('name');
+                    
+                if (error) throw error;
+                
+                const shoppingList = document.getElementById('admin-shopping-list');
+                shoppingList.innerHTML = '';
+                
+                data.forEach(item => {
+                    const shoppingItem = document.createElement('div');
+                    shoppingItem.className = `shopping-item priority-${getPriorityClass(item.priority)}`;
+                    
+                    shoppingItem.innerHTML = `
+                        <div class="shopping-info">
+                            <h3>${item.name}</h3>
+                            <p>Предложил: ${item.added_by_name}</p>
+                            <p>Статус: ${item.approved ? 'Одобрен' : 'На рассмотрении'}</p>
+                            <p>Приоритет: ${getPriorityText(item.priority)}</p>
+                        </div>
+                        <div style="display:flex;gap:5px;flex-direction:column;">
+                            <select id="priority-${item.id}" onchange="updateShoppingItemPriority('${item.id}', this.value)">
+                                <option value="1" ${item.priority == 1 ? 'selected' : ''}>Низкий</option>
+                                <option value="2" ${item.priority == 2 ? 'selected' : ''}>Средний</option>
+                                <option value="3" ${item.priority == 3 ? 'selected' : ''}>Высокий</option>
+                            </select>
+                            <div style="display:flex;gap:5px;">
+                                <button class="btn" onclick="approveShoppingItem('${item.id}')">${item.approved ? 'Снять' : 'Одобрить'}</button>
+                                <button class="btn btn-danger" onclick="deleteShoppingItem('${item.id}')"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    shoppingList.appendChild(shoppingItem);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке списка покупок для админа:', error);
+            }
+        }
+        
+        // Функции управления для админа
+        async function deleteEquipment(id) {
+            if (!confirm('Вы уверены, что хотите удалить это снаряжение?')) return;
+            
+            try {
+                const { error } = await supabase
+                    .from('equipment')
+                    .delete()
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                loadAdminEquipment();
+            } catch (error) {
+                console.error('Ошибка при удалении снаряжения:', error);
+            }
+        }
+        
+        async function toggleProductStatus(id, currentStatus) {
+            try {
+                const newStatus = currentStatus === 'approved' ? 'voting' : 'approved';
+                
+                const { error } = await supabase
+                    .from('products')
+                    .update({ status: newStatus })
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                loadAdminProducts();
+            } catch (error) {
+                console.error('Ошибка при изменении статуса продукта:', error);
+            }
+        }
+        
+        async function deleteProduct(id) {
+            if (!confirm('Вы уверены, что хотите удалить этот продукт?')) return;
+            
+            try {
+                // Сначала удаляем голоса
+                const { error: votesError } = await supabase
+                    .from('product_votes')
+                    .delete()
+                    .eq('product_id', id);
+                    
+                if (votesError) throw votesError;
+                
+                // Затем удаляем продукт
+                const { error } = await supabase
+                    .from('products')
+                    .delete()
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                loadAdminProducts();
+            } catch (error) {
+                console.error('Ошибка при удалении продукта:', error);
+            }
+        }
+        
+        async function approveShoppingItem(id) {
+            try {
+                // Получаем текущий статус
+                const { data, error: fetchError } = await supabase
+                    .from('shopping_list')
+                    .select('approved')
+                    .eq('id', id)
+                    .single();
+                    
+                if (fetchError) throw fetchError;
+                
+                const { error } = await supabase
+                    .from('shopping_list')
+                    .update({ approved: !data.approved })
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                loadAdminShoppingList();
+            } catch (error) {
+                console.error('Ошибка при изменении статуса товара:', error);
+            }
+        }
+        
+        async function updateShoppingItemPriority(id, priority) {
+            try {
+                const { error } = await supabase
+                    .from('shopping_list')
+                    .update({ priority: parseInt(priority) })
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                loadAdminShoppingList();
+            } catch (error) {
+                console.error('Ошибка при обновлении приоритета:', error);
+            }
+        }
+        
+        async function deleteShoppingItem(id) {
+            if (!confirm('Вы уверены, что хотите удалить этот товар?')) return;
+            
+            try {
+                const { error } = await supabase
+                    .from('shopping_list')
+                    .delete()
+                    .eq('id', id);
+                    
+                if (error) throw error;
+                
+                if (isAdmin) {
+                    loadAdminShoppingList();
+                } else {
+                    loadShoppingList();
+                }
+            } catch (error) {
+                console.error('Ошибка при удалении товара:', error);
+            }
+        }
+        
+        // Обработка кликов вне модальных окон
+        window.onclick = function(event) {
+            const modals = document.getElementsByClassName('modal');
+            for (let i = 0; i < modals.length; i++) {
+                if (event.target == modals[i]) {
+                    modals[i].style.display = 'none';
+                }
+            }
         }
     </script>
 </body>
